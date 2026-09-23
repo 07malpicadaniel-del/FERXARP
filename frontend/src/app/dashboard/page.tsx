@@ -2,18 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, UserClaims } from "@/lib/api";
+import { api, DonationItem, ScoredMatch, UserClaims } from "@/lib/api";
 import { Navbar } from "@/components/dashboard/Navbar";
 import { DonationForm } from "@/components/dashboard/DonationForm";
 import { DonationList } from "@/components/dashboard/DonationList";
-import { MatchingResults } from "@/components/dashboard/MatchingResults";
+import { GardenGraph } from "@/components/dashboard/GardenGraph";
 import { Card } from "@/components/ui/Card";
 
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<UserClaims | null>(null);
-  const [donations, setDonations] = useState<any[]>([]);
-  const [matches, setMatches] = useState<any[]>([]);
+  const [donations, setDonations] = useState<DonationItem[]>([]);
+  const [selectedDonation, setSelectedDonation] = useState<DonationItem | null>(null);
+  const [matches, setMatches] = useState<ScoredMatch[]>([]);
+  const [loadingMatches, setLoadingMatches] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const loadInitialData = async () => {
@@ -40,11 +42,17 @@ export default function DashboardPage() {
   }, [router]);
 
   const handleSelectMatching = async (id: string) => {
+    const active = donations.find((d) => d.id === id) || null;
+    setSelectedDonation(active);
+    setLoadingMatches(true);
+
     try {
       const results = await api.getMatches(id);
       setMatches(results);
     } catch (err) {
-      console.error("Error al calcular matching:", err);
+      console.error("Error al calcular matching vectorial:", err);
+    } finally {
+      setLoadingMatches(false);
     }
   };
 
@@ -55,60 +63,69 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center text-xs text-neutral-500 font-mono">
-        Cargando plataforma...
+      <div className="min-h-screen bg-garden-obsidian flex items-center justify-center text-xs text-garden-sage font-mono">
+        Sincronizando jardín logístico...
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 p-8">
+    <main className="min-h-screen bg-garden-obsidian text-neutral-100 p-8">
       <Navbar user={user} onLogout={handleLogout} />
 
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         {user?.role === "empresa" ? (
-          /* VISTA PARA EMPRESAS: Publicación, Escaneo y Matching de Excedentes */
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <DonationForm onDonationCreated={loadInitialData} />
-            <div className="md:col-span-2 space-y-6">
+          /* VISTA PARA EMPRESAS: Formulario de Siembra y Ramificación por IA */
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="lg:col-span-4 space-y-6">
+              <DonationForm onDonationCreated={loadInitialData} />
               <DonationList
                 donations={donations}
                 onSelectMatching={handleSelectMatching}
                 onRefreshList={loadInitialData}
               />
-              <MatchingResults matches={matches} />
+            </div>
+
+            <div className="lg:col-span-8">
+              <GardenGraph
+                donation={selectedDonation}
+                matches={matches}
+                isLoading={loadingMatches}
+              />
             </div>
           </div>
         ) : (
-          /* VISTA PARA ONGs: Recepción y Monitoreo */
+          /* VISTA PARA ONGs: Recepción de Nutrientes */
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <Card title="Panel de ONG" subtitle="Recepción de donaciones y asignaciones">
-              <p className="text-xs text-neutral-400">
-                Tu perfil está activo para recibir emparejamientos calculados por el motor de IA según cercanía geográfica y requerimientos prioritarios.
+            <Card title="Nodo Receptor de ONG" subtitle="Recepción y canalización de insumos">
+              <p className="text-xs text-garden-sage leading-relaxed">
+                Tu brote receptor está conectado a la red simbiótica. Los lotes se asignan según afinidad semántica y proximidad de acopio.
               </p>
-              <div className="mt-4 pt-4 border-t border-neutral-800">
-                <span className="text-xs text-emerald-400 font-mono font-medium">
-                  Estado: En espera de asignaciones
-                </span>
+              <div className="mt-4 pt-4 border-t border-garden-border flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-garden-leaf animate-pulse" />
+                <span className="text-xs text-garden-sprout font-mono">Estado: Brote Activo</span>
               </div>
             </Card>
 
             <div className="md:col-span-2">
-              <Card title="Donaciones Disponibles en el Sistema" subtitle="Lotes con prioridad asignada a tu zona">
+              <Card title="Cosechas Asignadas" subtitle="Lotes disponibles en tránsito hacia tu territorio">
                 {donations.length === 0 ? (
-                  <p className="text-xs text-neutral-500 py-4">No hay donaciones activas vinculadas a tu perfil actualmente.</p>
+                  <p className="text-xs text-garden-sage py-4">No hay brotes activos vinculados a este nodo.</p>
                 ) : (
                   <div className="space-y-3 mt-4">
                     {donations.map((d) => (
-                      <div key={d.id} className="border border-neutral-800 bg-neutral-950/60 p-3 rounded-lg">
-                        <p className="text-sm font-medium text-white">{d.title}</p>
-                        <p className="text-xs text-neutral-400">Cantidad disponible: {d.quantity} unidades</p>
+                      <div
+                        key={d.id}
+                        className="border border-garden-border bg-garden-dark/70 p-4 rounded-xl flex justify-between items-center"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-white">{d.title}</p>
+                          <p className="text-xs text-garden-sage">Cantidad asignada: {d.quantity} unidades</p>
+                        </div>
                         {d.status && (
-                          <div className="mt-2">
-                            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-neutral-800 text-neutral-300">
-                              Estado logístico: {d.status}
-                            </span>
-                          </div>
+                          <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-garden-surface border border-garden-border text-garden-leaf">
+                            {d.status}
+                          </span>
                         )}
                       </div>
                     ))}

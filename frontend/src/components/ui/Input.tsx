@@ -2,16 +2,26 @@ import React from "react";
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
+  error?: string;
 }
 
-export function Input({ label, className = "", ...props }: InputProps) {
+export function Input({ label, error, className = "", ...props }: InputProps) {
   return (
-    <div className="space-y-1">
-      {label && <label className="block text-xs text-neutral-400">{label}</label>}
+    <div className="w-full space-y-1.5">
+      {label && (
+        <label className="block text-[11px] font-mono uppercase tracking-wider text-garden-sage">
+          {label}
+        </label>
+      )}
       <input
-        className={`w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-neutral-600 ${className}`}
+        className={`w-full bg-garden-dark border border-garden-border rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-garden-sage/40 focus:outline-none focus:border-garden-leaf focus:ring-1 focus:ring-garden-leaf transition font-sans ${
+          error ? "border-rose-500/70 focus:border-rose-500 focus:ring-rose-500/50" : ""
+        } ${className}`}
         {...props}
       />
+      {error && (
+        <p className="text-[11px] font-mono text-rose-400 mt-1">{error}</p>
+      )}
     </div>
   );
 }

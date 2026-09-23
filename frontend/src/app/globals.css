@@ -1,26 +1,53 @@
 @import "tailwindcss";
 
+@theme {
+  /* Paleta Mineral Botánica Fexarp */
+  --color-garden-obsidian: #060907;
+  --color-garden-dark: #0a110d;
+  --color-garden-surface: #0f1913;
+  --color-garden-card: #13211a;
+  --color-garden-border: rgba(36, 62, 49, 0.45);
+  --color-garden-border-glow: rgba(52, 211, 153, 0.2);
+  --color-garden-sage: #8fa896;
+  --color-garden-leaf: #34d399;
+  --color-garden-emerald: #10b981;
+  --color-garden-sprout: #6ee7b7;
+  --color-garden-amber: #f59e0b;
+  --color-garden-soil: #221c16;
+
+  /* Sombras y Halos Orgánicos */
+  --shadow-garden-glow: 0 0 25px -5px rgba(16, 185, 129, 0.15);
+  --shadow-garden-amber: 0 0 25px -5px rgba(245, 158, 11, 0.15);
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-garden-obsidian);
+  color: #e5e7eb;
+  min-height: 100vh;
+  /* Gradientes radiales ambientales sutiles para efecto de sotobosque mineral */
+  background-image: 
+    radial-gradient(ellipse 70% 40% at 50% -10%, rgba(16, 185, 129, 0.07), transparent),
+    radial-gradient(ellipse 50% 30% at 90% 100%, rgba(5, 150, 105, 0.04), transparent),
+    radial-gradient(ellipse 40% 30% at 10% 90%, rgba(245, 158, 11, 0.02), transparent);
+  background-attachment: fixed;
+}
+
+/* Scrollbar con acento orgánico */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-garden-dark);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(36, 62, 49, 0.6);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-garden-leaf);
 }

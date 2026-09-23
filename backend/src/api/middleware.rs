@@ -1,0 +1,43 @@
+use axum::{
+    extract::FromRequestParts,
+    http::{header::AUTHORIZATION, request::Parts, StatusCode},
+};
+use jsonwebtoken::{decode, DecodingKey, Validation};
+use std::sync::Arc;
+
+use crate::{api::auth::Claims, AppState};
+
+// Al usar Axum 0.7+ y Rust moderno, ya no necesitamos la macro #[async_trait]
+impl FromRequestParts<Arc<AppState>> for Claims {
+    type Rejection = (StatusCode, String);
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
+        // 1. Extraer el header Authorization
+        let auth_header = parts
+            .headers
+            .get(AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| value.starts_with("Bearer "))
+            .ok_or((
+                StatusCode::UNAUTHORIZED,
+                "Falta el token de autorización o el formato es inválido".to_string(),
+            ))?;
+
+        // 2. Limpiar la cadena para obtener solo el token
+        let token = auth_header.trim_start_matches("Bearer ");
+
+        // 3. Decodificar y validar criptográficamente el JWT
+        let token_data = decode::<Claims>(
+            token,
+            &DecodingKey::from_secret(state.jwt_secret.as_bytes()),
+            &Validation::default(),
+        )
+        .map_err(|e| (StatusCode::UNAUTHORIZED, format!("Token inválido o expirado: {}", e)))?;
+
+        // 4. Inyectar los Claims (con el rol y UUID) directamente al controlador
+        Ok(token_data.claims)
+    }
+}

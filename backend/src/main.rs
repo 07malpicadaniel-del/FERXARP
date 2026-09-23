@@ -7,6 +7,8 @@ use tower_http::cors::CorsLayer;
 use tracing::info;
 
 // Definimos el estado compartido que inyectaremos en todos los endpoints
+pub mod api;
+pub mod models;
 pub struct AppState {
     pub db: Pool<Postgres>,
     pub jwt_secret: String,
@@ -39,11 +41,12 @@ async fn main() {
         jwt_secret,
     });
 
-    // 5. Configurar el enrutador y los permisos CORS
+// 5. Configurar el enrutador y los permisos CORS
     let app = Router::new()
         .route("/health", get(health_check))
-        // TODO: Aquí agregaremos las rutas de auth.rs y scanner.rs
-        .layer(CorsLayer::permissive()) // Permite peticiones desde Next.js local
+        .nest("/api/auth", api::auth::router()) // <-- Conexión del microservicio
+        .nest("/api/donations", api::donations::router())
+        .layer(CorsLayer::permissive())
         .with_state(shared_state);
 
     // 6. Levantar el servidor en el puerto 8000

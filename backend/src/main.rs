@@ -7,6 +7,7 @@ use tower_http::cors::CorsLayer;
 use tracing::info;
 
 // Definimos el estado compartido que inyectaremos en todos los endpoints
+pub mod ai;
 pub mod api;
 pub mod models;
 pub struct AppState {
@@ -46,6 +47,7 @@ async fn main() {
         .route("/health", get(health_check))
         .nest("/api/auth", api::auth::router()) // <-- Conexión del microservicio
         .nest("/api/donations", api::donations::router())
+        .nest("/api/scanner", api::scanner::router())
         .layer(CorsLayer::permissive())
         .with_state(shared_state);
 

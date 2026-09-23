@@ -14,6 +14,7 @@ use crate::{
         matcher::{rank_ngos_for_donation, NgoCandidate, ScoredMatch},
     },
     api::auth::Claims,
+    models::user::Role,
     AppState,
 };
 
@@ -45,12 +46,20 @@ pub fn router() -> Router<Arc<AppState>> {
 
 // --- CONTROLADORES CRUD ---
 
-// POST /api/donations - Registrar una nueva donación
+// POST /api/donations - Registrar una nueva donación (Restringido a Empresas o Admins)
 async fn create_donation(
     claims: Claims,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<CreateDonationRequest>,
 ) -> Result<(StatusCode, Json<DonationResponse>), (StatusCode, String)> {
+    // Control de acceso por rol (RBAC) con enum Role
+    if !matches!(claims.role, Role::Empresa | Role::Admin) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Acceso denegado: únicamente perfiles de 'empresa' o 'admin' pueden registrar donaciones.".to_string(),
+        ));
+    }
+
     let record = sqlx::query!(
         r#"
         INSERT INTO donations (user_id, title, description, quantity) 
@@ -107,7 +116,7 @@ async fn list_donations(
 
 // --- MOTOR DE EMPAREJAMIENTO ---
 
-// GET /api/donations/:id/matches - Calcular ranking de ONGs prioritarias
+// GET /api/donations/{id}/matches - Calcular ranking de ONGs prioritarias
 async fn get_donation_matches(
     _claims: Claims,
     Path(donation_id): Path<Uuid>,

@@ -1,8 +1,53 @@
-// frontend/src/lib/api.ts
-
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-// Utilidad base para peticiones con o sin autenticación
+// --- TIPOS Y MODELOS ---
+
+export interface AuthResponse {
+  token: string;
+}
+
+export interface UserClaims {
+  sub: string;
+  role: "admin" | "empresa" | "ong";
+  exp: number;
+}
+
+export interface DonationItem {
+  id: string;
+  user_id?: string | null;
+  title: string;
+  description?: string | null;
+  quantity: number;
+  status?: string | null;
+}
+
+export interface ScoredMatch {
+  ngo_id: string;
+  ngo_name: string;
+  final_score: number;
+  distance_km: number;
+  semantic_similarity: number;
+}
+
+export interface ScanResult {
+  donation_id: string;
+  previous_status: string | null;
+  new_status: string;
+  message: string;
+}
+
+export interface MapPoint {
+  id: string;
+  name: string;
+  point_type: "acopio" | "ong";
+  latitude: number;
+  longitude: number;
+  status?: string | null;
+  details: string;
+}
+
+// --- CLIENTE BASE HTTP ---
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = typeof window !== "undefined" ? localStorage.getItem("fexarp_token") : null;
 
@@ -22,24 +67,16 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   if (!res.ok) {
     const errorText = await res.text();
-    throw new Error(errorText || `Error ${res.status}: Fallo en la petición`);
+    throw new Error(errorText || `Error HTTP ${res.status}`);
   }
 
   return res.json();
 }
 
-// --- AUTENTICACIÓN ---
-export interface AuthResponse {
-  token: string;
-}
-
-export interface UserClaims {
-  sub: string;
-  role: "admin" | "empresa" | "ong";
-  exp: number;
-}
+// --- SERVICIOS DE LA API ---
 
 export const api = {
+  // Autenticación y Perfil
   login: (data: { email: string; password: string }) =>
     request<AuthResponse>("/api/auth/login", {
       method: "POST",
@@ -54,44 +91,28 @@ export const api = {
 
   getMe: () => request<UserClaims>("/api/auth/me"),
 
-  // --- DONACIONES ---
+  // Donaciones y Matching Semántico
   createDonation: (data: { title: string; description?: string; quantity: number }) =>
-    request<{ id: string; user_id: string; title: string; description?: string; quantity: number }>(
-      "/api/donations",
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      }
-    ),
+    request<DonationItem>("/api/donations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
-  listDonations: () =>
-    request<Array<{ id: string; user_id: string; title: string; description?: string; quantity: number }>>(
-      "/api/donations"
-    ),
+  listDonations: () => request<DonationItem[]>("/api/donations"),
 
   getMatches: (donationId: string) =>
-    request<
-      Array<{
-        ngo_id: string;
-        ngo_name: string;
-        final_score: number;
-        distance_km: number;
-        semantic_similarity: number;
-      }>
-    >(`/api/donations/${donationId}/matches`),
+    request<ScoredMatch[]>(`/api/donations/${donationId}/matches`),
 
-    // --- LOGÍSTICA Y ESCANEO ---
+  // Logística, Trazabilidad y Escaneo
   scanItem: (data: { donation_id: string; action: "entrada" | "salida" | "entrega" }) =>
-    request<{ donation_id: string; previous_status: string | null; new_status: string; message: string }>(
-      "/api/scanner/scan",
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      }
-    ),
+    request<ScanResult>("/api/scanner/scan", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
   getTracking: (id: string) =>
-    request<{ id: string; title: string; quantity: number; status: string | null }>(
-      `/api/scanner/tracking/${id}`
-    ),
+    request<DonationItem>(`/api/scanner/tracking/${id}`),
+
+  // Geolocalización
+  getMapPoints: () => request<MapPoint[]>("/api/scanner/map-points"),
 };

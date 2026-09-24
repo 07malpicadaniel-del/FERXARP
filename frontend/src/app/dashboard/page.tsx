@@ -69,7 +69,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-garden-obsidian flex items-center justify-center text-xs text-garden-sage font-mono">
-        Sincronizando ecosistema Fexarp...
+        Sincronizando plataforma Fexarp...
       </div>
     );
   }
@@ -80,16 +80,12 @@ export default function DashboardPage() {
 
       <div className="max-w-6xl mx-auto">
         {user?.role === "ceo" ? (
-          /* VISTA DIRECTIVA (CEO): HU-3 Reportes de Impacto y Sostenibilidad */
           <CeoMetrics />
         ) : user?.role === "admin" ? (
-          /* VISTA DE SEGURIDAD (ADMIN TI): HU-4 Auditoría y Verificación de ONGs */
           <AdminAudit />
         ) : user?.role === "ong" ? (
-          /* VISTA RECEPTORA (ONG): Dosel de Absorción, Solicitud y Escáner */
           <OngCanopy />
         ) : (
-          /* VISTA GENERADORA (EMPRESA): Semillero, Inventario y Red Arbórea */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             <div className="lg:col-span-4 space-y-6">
               <DonationForm onDonationCreated={loadInitialData} />

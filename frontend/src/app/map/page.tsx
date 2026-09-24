@@ -19,23 +19,25 @@ export default function MapPage() {
       return;
     }
 
-    // Carga de coordenadas desde el backend en Rust
     api.getMapPoints()
       .then((data) => {
         setPoints(data);
         setLoading(false);
       })
       .catch((err) => {
-        console.error("Error al obtener puntos geodésicos:", err);
+        console.error("Error al obtener puntos:", err);
         setLoading(false);
       });
   }, [router]);
 
   useEffect(() => {
-    if (loading || !mapContainerRef.current || mapInstanceRef.current) return;
+    if (loading || !mapContainerRef.current) return;
+
+    let isMounted = true;
 
     import("leaflet").then((L) => {
-      // Inyección de estilos de Leaflet y filtro mineral para OpenStreetMap
+      if (!isMounted || !mapContainerRef.current) return;
+
       if (!document.getElementById("leaflet-css")) {
         const link = document.createElement("link");
         link.id = "leaflet-css";
@@ -48,45 +50,61 @@ export default function MapPage() {
         const style = document.createElement("style");
         style.id = "map-botanical-filter";
         style.innerHTML = `
-          /* Inversión mineral nocturna para teselas de OpenStreetMap */
           .botanical-tiles .leaflet-tile {
             filter: brightness(0.65) invert(1) contrast(1.7) hue-rotate(185deg) saturate(0.35) !important;
           }
           .custom-popup .leaflet-popup-content-wrapper {
             background: #0f1913;
-            border: 1px solid rgba(36, 62, 49, 0.7);
+            border: 1px solid rgba(36, 62, 49, 0.8);
             border-radius: 14px;
             color: #e5e7eb;
-            box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
           }
           .custom-popup .leaflet-popup-tip {
             background: #0f1913;
-            border: 1px solid rgba(36, 62, 49, 0.7);
+            border: 1px solid rgba(36, 62, 49, 0.8);
+          }
+          .leaflet-control-attribution {
+            display: none !important;
           }
         `;
         document.head.appendChild(style);
       }
 
-      const map = L.map(mapContainerRef.current!, {
+      // Limpieza segura previa
+      if (mapInstanceRef.current) {
+        try {
+          mapInstanceRef.current.remove();
+        } catch {
+          // Ignorar si el DOM ya se recicló
+        }
+        mapInstanceRef.current = null;
+      }
+      if ((mapContainerRef.current as any)._leaflet_id) {
+        delete (mapContainerRef.current as any)._leaflet_id;
+      }
+
+      const map = L.map(mapContainerRef.current, {
         zoomControl: false,
+        attributionControl: false,
+        fadeAnimation: false,
+        markerZoomAnimation: false,
       }).setView([19.1738, -96.1342], 12);
       mapInstanceRef.current = map;
 
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
-      // Teselas libres tratadas con filtro mineral botánico
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         className: "botanical-tiles",
         maxZoom: 19,
       }).addTo(map);
 
       const acopioPoint = points.find((p) => p.point_type === "acopio");
+      const markersGroup: any[] = [];
 
       points.forEach((p) => {
         const isAcopio = p.point_type === "acopio";
 
-        // Marcadores botánicos SVG personalizados
         const iconHtml = isAcopio
           ? `<div class="relative flex items-center justify-center w-8 h-8">
                <div class="absolute w-8 h-8 rounded-full bg-emerald-500/20 animate-ping"></div>
@@ -108,6 +126,7 @@ export default function MapPage() {
         });
 
         const marker = L.marker([p.latitude, p.longitude], { icon: customIcon }).addTo(map);
+        markersGroup.push(marker);
 
         marker.bindPopup(
           `
@@ -115,7 +134,7 @@ export default function MapPage() {
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
               <strong style="color: #ffffff; font-size: 13px;">${p.name}</strong>
               <span style="font-size: 9px; font-family: monospace; text-transform: uppercase; padding: 2px 6px; border-radius: 9999px; background: #060907; border: 1px solid rgba(36, 62, 49, 0.8); color: ${isAcopio ? "#34d399" : "#6ee7b7"};">
-                ${isAcopio ? "Árbol Matriz" : "Brote Receptor"}
+                ${isAcopio ? "Almacén Central" : "Organización"}
               </span>
             </div>
             <p style="margin: 0; color: #8fa896; font-size: 11px; line-height: 1.4;">${p.details}</p>
@@ -124,7 +143,6 @@ export default function MapPage() {
           { className: "custom-popup" }
         );
 
-        // Ramas logísticas (enlaces que unen el árbol central con cada brote)
         if (!isAcopio && acopioPoint) {
           L.polyline(
             [
@@ -140,63 +158,85 @@ export default function MapPage() {
           ).addTo(map);
         }
       });
+
+      // Encuadre sin animación para evitar race condition en el DOM
+      if (markersGroup.length > 0 && isMounted) {
+        const group = L.featureGroup(markersGroup);
+        map.fitBounds(group.getBounds().pad(0.12), { animate: false });
+      }
+
+      setTimeout(() => {
+        if (isMounted && mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize({ animate: false });
+        }
+      }, 100);
     });
 
     return () => {
+      isMounted = false;
       if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
+        try {
+          mapInstanceRef.current.eachLayer((layer: any) => {
+            mapInstanceRef.current.removeLayer(layer);
+          });
+          mapInstanceRef.current.remove();
+        } catch {
+          // Captura silenciosa de desmonte
+        }
         mapInstanceRef.current = null;
       }
     };
   }, [loading, points]);
 
   return (
-    <main className="min-h-screen bg-garden-obsidian text-neutral-100 p-8 flex flex-col">
-      {/* Cabecera Mineral */}
-      <header className="max-w-6xl w-full mx-auto flex justify-between items-center border border-garden-border bg-garden-surface/70 backdrop-blur-md px-6 py-4 rounded-2xl mb-6 shadow-garden-glow">
+    <main className="min-h-screen bg-garden-obsidian text-neutral-100 p-6 flex flex-col justify-between">
+      <header className="max-w-7xl w-full mx-auto flex justify-between items-center border border-garden-border bg-garden-surface/70 backdrop-blur-md px-6 py-3.5 rounded-2xl mb-4 shadow-garden-glow">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-garden-dark border border-garden-emerald/30 flex items-center justify-center shadow-inner">
             <span className="text-sm">🌱</span>
           </div>
           <div>
-            <h1 className="text-lg font-semibold tracking-tight text-white">Topografía Logística</h1>
-            <p className="text-xs text-garden-sage">Cartografía viva de acopio y brotes en territorio</p>
+            <h1 className="text-base font-semibold tracking-tight text-white">Mapa de Almacenes y Envíos</h1>
+            <p className="text-xs text-garden-sage">Ubicación de centros de acopio y organizaciones en la localidad</p>
           </div>
         </div>
 
         <Link
           href="/dashboard"
-          className="text-xs bg-garden-dark hover:bg-garden-surface text-neutral-200 border border-garden-border hover:border-garden-emerald/40 px-4 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+          className="text-xs bg-garden-dark hover:bg-garden-surface text-neutral-200 border border-garden-border hover:border-garden-emerald/40 px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
         >
           <span>←</span>
-          <span>Regresar al Jardín</span>
+          <span>Regresar al Tablero</span>
         </Link>
       </header>
 
-      {/* Contenedor del Mapa */}
-      <div className="max-w-6xl w-full mx-auto flex-1 flex flex-col gap-4">
-        <div className="flex items-center gap-6 px-2 text-xs">
+      <div className="max-w-7xl w-full mx-auto flex-1 flex flex-col gap-3">
+        <div className="flex items-center gap-6 px-1 text-xs">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-garden-emerald shadow-[0_0_8px_#10b981]" />
-            <span className="text-garden-sage">Árbol Matriz (Acopio Central)</span>
+            <div className="w-2.5 h-2.5 rounded-full bg-garden-emerald shadow-[0_0_8px_#10b981]" />
+            <span className="text-garden-sage">Almacén Central (Hub de Acopio)</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-garden-leaf shadow-[0_0_6px_#34d399]" />
-            <span className="text-garden-sage">Brotes Receptores (ONGs Vinculadas)</span>
+            <span className="text-garden-sage">Organizaciones Sociales Vinculadas</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-6 h-0 border-t-2 border-dashed border-garden-leaf/60" />
-            <span className="text-garden-sage font-mono text-[11px]">Ruta de Sabia Simbiótica</span>
+            <span className="text-garden-sage font-mono text-[11px]">Rutas Logísticas Activas</span>
           </div>
         </div>
 
-        <div className="flex-1 min-h-[580px] w-full rounded-2xl overflow-hidden border border-garden-border relative bg-garden-surface shadow-garden-glow">
+        <div className="flex-1 w-full rounded-2xl overflow-hidden border border-garden-border relative bg-garden-surface shadow-garden-glow min-h-[580px]">
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center bg-garden-obsidian/85 z-20 text-xs font-mono text-garden-sprout">
-              Sincronizando coordenadas del ecosistema...
+              Sincronizando coordenadas de la red...
             </div>
           )}
-          <div ref={mapContainerRef} className="w-full h-full min-h-[580px]" />
+          <div
+            ref={mapContainerRef}
+            className="w-full h-full min-h-[580px]"
+            style={{ width: "100%", height: "100%", minHeight: "580px" }}
+          />
         </div>
       </div>
     </main>

@@ -50,6 +50,7 @@ async fn main() {
         .nest("/api/donations", api::donations::router())
         .nest("/api/scanner", api::scanner::router())
         .nest("/api/metrics", api::metrics::router())
+        .nest("/api/seed", api::seed::router())
         .layer(CorsLayer::permissive())
         .with_state(shared_state);
 

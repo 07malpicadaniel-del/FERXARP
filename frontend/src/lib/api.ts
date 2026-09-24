@@ -29,6 +29,20 @@ export interface FeedDonationItem {
   created_at?: string;
 }
 
+export interface ShipmentItem {
+  id: string;
+  donation_id: string;
+  title: string;
+  description?: string;
+  quantity: number;
+  donation_status: string;
+  request_status: string;
+  donor_email: string;
+  ngo_name: string;
+  rejection_reason?: string;
+  created_at?: string;
+}
+
 export interface ScoredMatch {
   ngo_id: string;
   ngo_name: string;
@@ -65,7 +79,7 @@ export interface ImpactMetrics {
   verified_ngos: number;
 }
 
-// --- CLIENTE HTTP CON GESTIÓN DE TOKEN Y RESPUESTAS NO-JSON ---
+// --- CLIENTE HTTP ---
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = typeof window !== "undefined" ? localStorage.getItem("fexarp_token") : null;
@@ -86,7 +100,6 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     throw new Error(errorText || `Error HTTP: ${response.status}`);
   }
 
-  // Respuestas vacías (201 Created o 204 No Content sin cuerpo)
   if (response.status === 204 || response.headers.get("content-length") === "0") {
     return {} as T;
   }
@@ -96,15 +109,14 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     return response.json();
   }
 
-  // Fallback seguro si la respuesta llega en texto plano[cite: 18]
   const rawText = await response.text();
   return { message: rawText } as T;
 }
 
-// --- MÉTODOS DE CONSUMO DE LA API ---
+// --- SERVICIOS DE LA PLATAFORMA ---
 
 export const api = {
-  // Autenticación e Identidad[cite: 8]
+  // Autenticación
   login: (data: { email: string; password: string }) =>
     request<{ token: string }>("/api/auth/login", { method: "POST", body: JSON.stringify(data) }),
 
@@ -113,7 +125,7 @@ export const api = {
 
   getMe: () => request<UserClaims>("/api/auth/me"),
 
-  // Donaciones e Inventario[cite: 8]
+  // Donaciones
   createDonation: (data: { title: string; description?: string; quantity: number }) =>
     request<DonationItem>("/api/donations", { method: "POST", body: JSON.stringify(data) }),
 
@@ -121,18 +133,30 @@ export const api = {
 
   getMatches: (id: string) => request<ScoredMatch[]>(`/api/donations/${id}/matches`),
 
-  // Flujo Operativo de ONGs[cite: 8]
   getDonationFeed: () => request<FeedDonationItem[]>("/api/donations/feed"),
 
   requestDonation: (donationId: string) =>
     request<void>(`/api/donations/${donationId}/request`, { method: "POST" }),
 
-  // Logística, Trazabilidad y Geolocalización[cite: 8]
+  // Control de Envíos y Asignaciones
+  getShipments: () => request<ShipmentItem[]>("/api/donations/shipments"),
+
+  approveShipment: (donationId: string) =>
+    request<void>(`/api/donations/${donationId}/approve`, { method: "POST" }),
+
+  // Logística y Ubicaciones
   scanItem: (data: { donation_id: string; action: string; rejection_reason?: string; notes?: string }) =>
     request<ScanResult>("/api/scanner/scan", { method: "POST", body: JSON.stringify(data) }),
 
   getMapPoints: () => request<MapPoint[]>("/api/scanner/map-points"),
 
-  // Métricas del Tablero CEO (HU-3)[cite: 13]
+  // Métricas del CEO
   getImpactMetrics: () => request<ImpactMetrics>("/api/metrics/summary"),
+
+  // Ingesta de Datos Reales (Veracruz)
+  seedVeracruzData: () =>
+    request<{ message: string; companies_seeded: number; ngos_seeded: number; donations_seeded: number }>(
+      "/api/seed/veracruz",
+      { method: "POST" }
+    ),
 };

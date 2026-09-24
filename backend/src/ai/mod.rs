@@ -3,3 +3,4 @@
 pub mod chroma_db;
 pub mod matcher;
 pub mod scoring;
+pub mod groq;

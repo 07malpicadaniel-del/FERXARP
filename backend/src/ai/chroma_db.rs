@@ -20,6 +20,39 @@ struct QueryResponse {
 }
 
 impl ChromaClient {
+
+    // Dentro del bloque impl ChromaClient en backend/src/ai/chroma_db.rs:
+
+pub async fn add_or_update_ngo(&self, ngo_id: uuid::Uuid, needs_text: &str) -> Result<(), String> {
+    // Si la colección 'ngos' requiere inserción vía HTTP API de ChromaDB:
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/v1/collections", self.base_url);
+
+    // 1. Obtener o crear colección
+let _col_res = client
+        .post(&url)
+        .json(&serde_json::json!({
+            "name": "ngos",
+            "metadata": { "hnsw:space": "cosine" }
+        }))
+        .send()
+        .await;
+
+    // 2. Insertar documento y embedding
+    let add_url = format!("{}/api/v1/collections/ngos/upsert", self.base_url);
+    let _ = client
+        .post(&add_url)
+        .json(&serde_json::json!({
+            "ids": [ngo_id.to_string()],
+            "documents": [needs_text],
+            "metadatas": [{ "ngo_id": ngo_id.to_string() }]
+        }))
+        .send()
+        .await;
+
+    Ok(())
+}
+
     pub fn new(base_url: Option<String>) -> Self {
         Self {
             base_url: base_url.unwrap_or_else(|| "http://localhost:8001".to_string()),

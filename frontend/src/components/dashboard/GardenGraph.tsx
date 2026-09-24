@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { DonationItem, ScoredMatch } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { api, DonationItem, MapPoint, ScoredMatch } from "@/lib/api";
 
 interface GardenGraphProps {
   donation: DonationItem | null;
@@ -10,89 +10,98 @@ interface GardenGraphProps {
 }
 
 export function GardenGraph({ donation, matches, isLoading = false }: GardenGraphProps) {
+  const [allPoints, setAllPoints] = useState<MapPoint[]>([]);
   const [activeMatch, setActiveMatch] = useState<ScoredMatch | null>(null);
 
-  const width = 760;
-  const height = 440;
-  const originX = 130;
-  const originY = height / 2;
+  useEffect(() => {
+    if (!donation) {
+      api.getMapPoints().then(setAllPoints).catch(console.error);
+    } else if (matches.length > 0) {
+      setActiveMatch(matches[0]);
+    }
+  }, [donation, matches]);
 
-  // Distribución vertical de nodos receptores (ONGs / Frutos)
-  const targetX = 610;
-  const totalTargets = matches.length;
+  const isDonationMode = Boolean(donation);
+  const rawList = isDonationMode ? matches : allPoints.filter((p) => p.point_type === "ong");
+
+  // Deduplicación estricta de nombres para que nunca se encimen
+  const seenNames = new Set<string>();
+  const targetList = rawList.filter((item: any) => {
+    const name = (item.ngo_name || item.name || "").trim();
+    if (!name || seenNames.has(name)) return false;
+    seenNames.add(name);
+    return true;
+  });
+
+  const totalTargets = targetList.length;
+
+  const width = 940;
+  const height = Math.max(460, totalTargets * 74);
+  const originX = 110;
+  const originY = height / 2;
+  const targetX = 490;
 
   const getTargetY = (index: number) => {
-    if (totalTargets === 1) return height / 2;
-    const padding = 70;
+    if (totalTargets <= 1) return height / 2;
+    const padding = 55;
     const step = (height - padding * 2) / (totalTargets - 1);
     return padding + index * step;
   };
 
   return (
     <div className="relative border border-garden-border bg-garden-surface/80 backdrop-blur-md rounded-2xl p-5 overflow-hidden shadow-garden-glow">
-      {/* Cabecera del Lienzo */}
       <div className="flex justify-between items-center mb-3">
         <div>
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-garden-leaf animate-pulse" />
-            Red Arbórea de Simbiosis
+            {isDonationMode ? "Ramas de Asignación Inteligente" : "Red General de Organizaciones y Empresas"}
           </h3>
           <p className="text-[11px] text-garden-sage">
-            Topología generativa ponderada por IA y proximidad geográfica
+            {isDonationMode
+              ? `Calculando afinidad con IA para: ${donation?.title}`
+              : "Visualización de las organizaciones y almacenes conectados en la zona"}
           </p>
         </div>
 
         {donation && (
           <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-garden-dark border border-garden-border text-garden-sprout">
-            {donation.quantity} unidades en distribución
+            {donation.quantity} unidades disponibles
           </span>
         )}
       </div>
 
-      {/* Estado Vacío: Semilla en Reposo */}
-      {!donation ? (
-        <div className="h-80 flex flex-col items-center justify-center text-center p-6 border border-dashed border-garden-border/60 rounded-xl bg-garden-dark/40">
-          <div className="w-12 h-12 rounded-full bg-garden-surface border border-garden-emerald/30 flex items-center justify-center mb-3 shadow-inner">
-            <div className="w-3.5 h-3.5 rounded-full bg-garden-sage/40" />
-          </div>
-          <p className="text-xs font-medium text-neutral-300">Semilla en reposo</p>
-          <p className="text-[11px] text-garden-sage max-w-xs mt-1">
-            Selecciona un lote del inventario para germinar las ramas hacia las ONGs con mayor afinidad semántica.
-          </p>
+      {!isDonationMode && (
+        <div className="mb-3 px-3.5 py-2 rounded-xl bg-garden-dark/80 border border-garden-border flex items-center justify-between text-xs">
+          <span className="text-garden-sage">
+            💡 Haz clic en <strong className="text-garden-sprout font-medium">&quot;Ramificar en Árbol 🌿&quot;</strong> en tu inventario para activar la evaluación de <strong className="text-white">DeepSeek-R1 (Groq)</strong>.
+          </span>
+          <span className="text-[10px] font-mono text-neutral-400 bg-garden-surface px-2 py-0.5 rounded border border-garden-border">
+            IA en espera
+          </span>
         </div>
-      ) : isLoading ? (
-        /* Estado de Carga: Germinación */
+      )}
+
+      {isLoading ? (
         <div className="h-80 flex flex-col items-center justify-center border border-garden-border/40 rounded-xl bg-garden-dark/30">
           <div className="w-10 h-10 border-2 border-garden-emerald/30 border-t-garden-leaf rounded-full animate-spin mb-3" />
-          <p className="text-xs text-garden-sprout font-mono tracking-wide">
-            Canalizando nutrientes vectoriales...
+          <p className="text-xs text-garden-sprout font-mono">Puntuando afinidad y vectores con DeepSeek-R1...</p>
+        </div>
+      ) : totalTargets === 0 ? (
+        <div className="h-80 flex flex-col items-center justify-center text-center p-6 border border-dashed border-garden-border/60 rounded-xl bg-garden-dark/40">
+          <p className="text-xs text-neutral-300 font-medium">No se detectaron organizaciones conectadas</p>
+          <p className="text-[11px] text-garden-sage mt-1">
+            Pulsa el botón superior &quot;Poblar Localidad&quot; para cargar entidades reales de la región.
           </p>
         </div>
-      ) : matches.length === 0 ? (
-        /* Sin Coincidencias */
-        <div className="h-80 flex flex-col items-center justify-center text-center p-6 border border-dashed border-garden-border/60 rounded-xl bg-garden-dark/40">
-          <p className="text-xs text-garden-amber">No se encontraron ramas receptoras viables en la zona.</p>
-        </div>
       ) : (
-        /* Lienzo SVG Dinámico */
         <div className="relative w-full overflow-x-auto">
-          <svg
-            viewBox={`0 0 ${width} ${height}`}
-            className="w-full h-auto min-w-[620px] select-none"
-          >
+          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto min-w-[780px] select-none">
             <defs>
-              {/* Filtro de resplandor para nodos vivos */}
               <filter id="glow-emerald" x="-30%" y="-30%" width="160%" height="160%">
                 <feGaussianBlur stdDeviation="4" result="blur" />
                 <feComposite in="SourceGraphic" in2="blur" operator="over" />
               </filter>
 
-              <filter id="glow-amber" x="-30%" y="-30%" width="160%" height="160%">
-                <feGaussianBlur stdDeviation="3" result="blur" />
-                <feComposite in="SourceGraphic" in2="blur" operator="over" />
-              </filter>
-
-              {/* Gradiente Tronco -> Rama */}
               <linearGradient id="branch-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
                 <stop offset="0%" stopColor="#059669" stopOpacity="0.8" />
                 <stop offset="70%" stopColor="#34d399" stopOpacity="0.6" />
@@ -100,13 +109,13 @@ export function GardenGraph({ donation, matches, isLoading = false }: GardenGrap
               </linearGradient>
             </defs>
 
-            {/* RAMAS (Curvas de Bézier cúbicas con grosor variable según final_score) */}
-            {matches.map((match, i) => {
+            {/* RAMAS SVG */}
+            {targetList.map((item: any, i) => {
               const destY = getTargetY(i);
-              const branchThickness = Math.max(1.5, (match.final_score / 100) * 6.5);
-              const isSelected = activeMatch?.ngo_id === match.ngo_id;
+              const score = isDonationMode ? item.final_score : 70;
+              const branchThickness = Math.max(1.8, (score / 100) * 5.5);
+              const isSelected = activeMatch?.ngo_id === item.ngo_id;
 
-              // Curvatura orgánica en S suave
               const cp1X = originX + (targetX - originX) * 0.45;
               const cp1Y = originY;
               const cp2X = originX + (targetX - originX) * 0.55;
@@ -115,99 +124,67 @@ export function GardenGraph({ donation, matches, isLoading = false }: GardenGrap
               const pathData = `M ${originX} ${originY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${targetX} ${destY}`;
 
               return (
-                <g key={match.ngo_id} className="cursor-pointer" onClick={() => setActiveMatch(match)}>
-                  {/* Sombra interactiva ampliada para hover cómodo */}
-                  <path
-                    d={pathData}
-                    fill="none"
-                    stroke="transparent"
-                    strokeWidth={20}
-                    className="transition-all"
-                  />
-
-                  {/* Rama Estructural Base */}
+                <g key={item.ngo_id || item.id} className="cursor-pointer" onClick={() => isDonationMode && setActiveMatch(item)}>
+                  <path d={pathData} fill="none" stroke="transparent" strokeWidth={24} />
                   <path
                     d={pathData}
                     fill="none"
                     stroke={isSelected ? "#6ee7b7" : "url(#branch-gradient)"}
-                    strokeWidth={isSelected ? branchThickness + 2 : branchThickness}
-                    strokeOpacity={isSelected ? 1 : 0.6}
+                    strokeWidth={isSelected ? branchThickness + 2.5 : branchThickness}
+                    strokeOpacity={isSelected ? 1 : 0.65}
                     strokeLinecap="round"
                     className="transition-all duration-300 hover:stroke-garden-sprout"
                   />
-
-                  {/* Pulso de Sabia Orgánica (Línea punteada en movimiento) */}
                   <path
                     d={pathData}
                     fill="none"
                     stroke="#ffffff"
-                    strokeWidth={Math.max(1, branchThickness * 0.35)}
-                    strokeDasharray="4 16"
+                    strokeWidth={Math.max(1, branchThickness * 0.3)}
+                    strokeDasharray="4 14"
                     strokeDashoffset={i * 8}
-                    strokeOpacity={0.4}
+                    strokeOpacity={0.35}
                     className="animate-[dash_12s_linear_infinite]"
                   />
                 </g>
               );
             })}
 
-            {/* NODO CENTRAL (La Semilla Nutriente / Excedente Donado) */}
+            {/* NODO CENTRAL */}
             <g transform={`translate(${originX}, ${originY})`}>
-              <circle
-                r={26}
-                fill="#0f1913"
-                stroke="#10b981"
-                strokeWidth={2}
-                filter="url(#glow-emerald)"
-              />
+              <circle r={26} fill="#0f1913" stroke="#10b981" strokeWidth={2} filter="url(#glow-emerald)" />
               <circle r={14} fill="#10b981" opacity={0.2} className="animate-ping" />
               <circle r={7} fill="#34d399" />
-              {/* Etiqueta de Origen */}
-              <text
-                x={-35}
-                y={-34}
-                fill="#ffffff"
-                fontSize="11"
-                fontWeight="600"
-                className="font-sans"
-              >
-                {donation.title.length > 18 ? `${donation.title.slice(0, 18)}...` : donation.title}
+              <text x={-40} y={-34} fill="#ffffff" fontSize="11" fontWeight="600">
+                {isDonationMode ? (donation!.title.length > 20 ? `${donation!.title.slice(0, 20)}...` : donation!.title) : "Centro de Acopio"}
               </text>
-              <text x={-35} y={-20} fill="#8fa896" fontSize="9" className="font-mono">
-                Semilla Matriz
+              <text x={-40} y={-20} fill="#8fa896" fontSize="9" className="font-mono">
+                {isDonationMode ? "Lote a Distribuir" : "Hub Logístico"}
               </text>
             </g>
 
-            {/* NODOS RECEPTORES (Frutos / ONGs Ponderadas) */}
-            {matches.map((match, i) => {
+            {/* NODOS DESTINO */}
+            {targetList.map((item: any, i) => {
               const destY = getTargetY(i);
-              const isSelected = activeMatch?.ngo_id === match.ngo_id;
-              const isHighPrio = match.final_score >= 80;
+              const name = item.ngo_name || item.name;
+              const isSelected = activeMatch?.ngo_id === item.ngo_id;
+              const isHighPrio = isDonationMode ? item.final_score >= 80 : true;
 
               return (
                 <g
-                  key={match.ngo_id}
+                  key={item.ngo_id || item.id}
                   transform={`translate(${targetX}, ${destY})`}
                   className="cursor-pointer group"
-                  onClick={() => setActiveMatch(match)}
+                  onClick={() => isDonationMode && setActiveMatch(item)}
                 >
-                  {/* Halo reactivo al nodo */}
                   <circle
-                    r={isSelected ? 18 : 14}
+                    r={isSelected ? 18 : 13}
                     fill="#0a110d"
                     stroke={isHighPrio ? "#34d399" : "#10b981"}
                     strokeWidth={isSelected ? 2.5 : 1.5}
                     filter={isHighPrio ? "url(#glow-emerald)" : undefined}
                     className="transition-all duration-300 group-hover:stroke-garden-sprout"
                   />
-                  {/* Núcleo del Brote */}
-                  <circle
-                    r={isSelected ? 6 : 4.5}
-                    fill={isHighPrio ? "#6ee7b7" : "#34d399"}
-                    className="transition-all duration-300"
-                  />
-
-                  {/* Nombre de la ONG */}
+                  <circle r={isSelected ? 6 : 4} fill={isHighPrio ? "#6ee7b7" : "#34d399"} />
                   <text
                     x={24}
                     y={-2}
@@ -216,12 +193,12 @@ export function GardenGraph({ donation, matches, isLoading = false }: GardenGrap
                     fontWeight={isSelected ? "600" : "500"}
                     className="transition-colors group-hover:fill-white font-sans"
                   >
-                    {match.ngo_name}
+                    {name}
                   </text>
-
-                  {/* Afinidad y Distancia */}
-                  <text x={24} y={12} fill="#8fa896" fontSize="9.5" className="font-mono">
-                    Score: {match.final_score.toFixed(1)}% | {match.distance_km.toFixed(1)} km
+                  <text x={24} y={13} fill="#8fa896" fontSize="9.5" className="font-mono">
+                    {isDonationMode
+                      ? `Compatibilidad: ${item.final_score.toFixed(1)}% | ${item.distance_km.toFixed(1)} km`
+                      : "Organización Verificada"}
                   </text>
                 </g>
               );
@@ -230,26 +207,35 @@ export function GardenGraph({ donation, matches, isLoading = false }: GardenGrap
         </div>
       )}
 
-      {/* DETALLE EXPANDIDO DEL NODO SELECCIONADO */}
+      {/* DETALLE DEL NODO EXPANDIDO */}
       {activeMatch && (
-        <div className="mt-4 p-3.5 rounded-xl bg-garden-dark/90 border border-garden-border flex flex-wrap justify-between items-center gap-4 transition-all">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-garden-surface border border-garden-emerald/40 flex items-center justify-center font-mono font-bold text-xs text-garden-sprout">
+        <div className="mt-4 p-4 rounded-xl bg-garden-dark/95 border border-garden-border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-garden-surface border border-garden-emerald/40 flex items-center justify-center font-mono font-bold text-sm text-garden-sprout shrink-0">
               {activeMatch.final_score.toFixed(0)}%
             </div>
             <div>
-              <p className="text-xs font-semibold text-white">{activeMatch.ngo_name}</p>
-              <p className="text-[11px] text-garden-sage">
-                Similitud semántica: {(activeMatch.semantic_similarity * 100).toFixed(1)}% | Distancia geodésica: {activeMatch.distance_km.toFixed(1)} km
+              <p className="text-xs font-semibold text-white flex items-center gap-2">
+                <span>{activeMatch.ngo_name}</span>
+                {activeMatch.ai_priority && (
+                  <span className="text-[9px] font-mono uppercase px-2 py-0.5 rounded-full bg-garden-emerald/20 text-garden-sprout border border-garden-emerald/30">
+                    Prioridad {activeMatch.ai_priority}
+                  </span>
+                )}
               </p>
+              <p className="text-[11px] text-garden-sage mt-0.5">
+                Similitud semántica: {(activeMatch.semantic_similarity * 100).toFixed(1)}% | Distancia: {activeMatch.distance_km.toFixed(1)} km
+              </p>
+              {activeMatch.ai_reasoning && (
+                <p className="text-[11px] text-emerald-300/90 italic mt-1 bg-garden-surface/60 px-2.5 py-1 rounded border border-garden-border/40">
+                  &ldquo;{activeMatch.ai_reasoning}&rdquo; — DeepSeek R1 (Groq)
+                </p>
+              )}
             </div>
           </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-mono px-2.5 py-1 rounded bg-garden-emerald/10 border border-garden-emerald/30 text-garden-leaf">
-              Prioridad Optimizada
-            </span>
-          </div>
+          <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-garden-dark border border-garden-emerald/30 text-garden-leaf shrink-0">
+            Afinidad Vectorial Validada
+          </span>
         </div>
       )}
     </div>

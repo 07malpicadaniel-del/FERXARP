@@ -6,10 +6,11 @@ use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
-// Definimos el estado compartido que inyectaremos en todos los endpoints
 pub mod ai;
 pub mod api;
 pub mod models;
+
+// Estado compartido inyectado en los controladores de Axum
 pub struct AppState {
     pub db: Pool<Postgres>,
     pub jwt_secret: String,
@@ -17,17 +18,17 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() {
-    // 1. Inicializar el sistema de logs y leer el archivo .env
+    // 1. Inicializar sistema de logs y variables de entorno
     tracing_subscriber::fmt::init();
     dotenv().ok();
 
     info!("Iniciando el servidor principal de Fexarp...");
 
-    // 2. Extraer las credenciales
+    // 2. Extraer credenciales desde .env
     let database_url = env::var("DATABASE_URL").expect("Falta DATABASE_URL en el archivo .env");
     let jwt_secret = env::var("JWT_SECRET").expect("Falta JWT_SECRET en el archivo .env");
 
-    // 3. Establecer la conexión con Supabase
+    // 3. Establecer conexión con Supabase (PostgreSQL)
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&database_url)
@@ -36,18 +37,19 @@ async fn main() {
 
     info!("Conexión a PostgreSQL (Supabase) establecida exitosamente.");
 
-    // 4. Empaquetar el estado para compartirlo de forma segura entre hilos
+    // 4. Empaquetar estado compartido
     let shared_state = Arc::new(AppState {
         db: pool,
         jwt_secret,
     });
 
-// 5. Configurar el enrutador y los permisos CORS
+    // 5. Configurar el enrutador central y anidar los micro-dominios
     let app = Router::new()
         .route("/health", get(health_check))
-        .nest("/api/auth", api::auth::router()) // <-- Conexión del microservicio
+        .nest("/api/auth", api::auth::router())
         .nest("/api/donations", api::donations::router())
         .nest("/api/scanner", api::scanner::router())
+        .nest("/api/metrics", api::metrics::router())
         .layer(CorsLayer::permissive())
         .with_state(shared_state);
 
@@ -57,7 +59,7 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-// Endpoint de prueba rápido
+// Endpoint de verificación rápida del servidor
 async fn health_check() -> &'static str {
     "¡Fexarp API Online! El cerebro en Rust está conectado a Supabase."
 }

@@ -1,32 +1,40 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-// --- TIPOS Y MODELOS ---
-
-export interface AuthResponse {
-  token: string;
-}
+// --- TIPOS Y CONTRATOS DE DATOS ---
 
 export interface UserClaims {
   sub: string;
-  role: "admin" | "empresa" | "ong";
+  email: string;
+  role: "empresa" | "ong" | "admin" | "ceo";
   exp: number;
 }
 
 export interface DonationItem {
   id: string;
-  user_id?: string | null;
+  user_id?: string;
   title: string;
-  description?: string | null;
+  description?: string;
   quantity: number;
   status?: string | null;
+  assigned_ngo_id?: string | null;
+}
+
+export interface FeedDonationItem {
+  id: string;
+  title: string;
+  description?: string;
+  quantity: number;
+  status: string;
+  donor_email: string;
+  created_at?: string;
 }
 
 export interface ScoredMatch {
   ngo_id: string;
   ngo_name: string;
-  final_score: number;
   distance_km: number;
   semantic_similarity: number;
+  final_score: number;
 }
 
 export interface ScanResult {
@@ -39,80 +47,92 @@ export interface ScanResult {
 export interface MapPoint {
   id: string;
   name: string;
-  point_type: "acopio" | "ong";
+  point_type: string;
   latitude: number;
   longitude: number;
-  status?: string | null;
+  status?: string;
   details: string;
 }
 
-// --- CLIENTE BASE HTTP ---
+export interface ImpactMetrics {
+  total_donations: number;
+  delivered_donations: number;
+  in_transit_donations: number;
+  rejected_donations: number;
+  total_volume_kg: number;
+  estimated_co2_saved_kg: number;
+  estimated_beneficiaries: number;
+  verified_ngos: number;
+}
+
+// --- CLIENTE HTTP CON GESTIÓN DE TOKEN Y RESPUESTAS NO-JSON ---
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = typeof window !== "undefined" ? localStorage.getItem("fexarp_token") : null;
 
-  const headers: Record<string, string> = {
+  const headers: HeadersInit = {
     "Content-Type": "application/json",
-    ...(options.headers as Record<string, string>),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options.headers,
   };
 
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  const res = await fetch(`${API_URL}${endpoint}`, {
+  const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     headers,
   });
 
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(errorText || `Error HTTP ${res.status}`);
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `Error HTTP: ${response.status}`);
   }
 
-  return res.json();
+  // Respuestas vacías (201 Created o 204 No Content sin cuerpo)
+  if (response.status === 204 || response.headers.get("content-length") === "0") {
+    return {} as T;
+  }
+
+  const contentType = response.headers.get("content-type");
+  if (contentType && contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  // Fallback seguro si la respuesta llega en texto plano[cite: 18]
+  const rawText = await response.text();
+  return { message: rawText } as T;
 }
 
-// --- SERVICIOS DE LA API ---
+// --- MÉTODOS DE CONSUMO DE LA API ---
 
 export const api = {
-  // Autenticación y Perfil
+  // Autenticación e Identidad[cite: 8]
   login: (data: { email: string; password: string }) =>
-    request<AuthResponse>("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+    request<{ token: string }>("/api/auth/login", { method: "POST", body: JSON.stringify(data) }),
 
   register: (data: { email: string; password: string; role: string }) =>
-    request<string>("/api/auth/register", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+    request<{ token: string; message: string }>("/api/auth/register", { method: "POST", body: JSON.stringify(data) }),
 
   getMe: () => request<UserClaims>("/api/auth/me"),
 
-  // Donaciones y Matching Semántico
+  // Donaciones e Inventario[cite: 8]
   createDonation: (data: { title: string; description?: string; quantity: number }) =>
-    request<DonationItem>("/api/donations", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+    request<DonationItem>("/api/donations", { method: "POST", body: JSON.stringify(data) }),
 
   listDonations: () => request<DonationItem[]>("/api/donations"),
 
-  getMatches: (donationId: string) =>
-    request<ScoredMatch[]>(`/api/donations/${donationId}/matches`),
+  getMatches: (id: string) => request<ScoredMatch[]>(`/api/donations/${id}/matches`),
 
-  // Logística, Trazabilidad y Escaneo
-  scanItem: (data: { donation_id: string; action: "entrada" | "salida" | "entrega" }) =>
-    request<ScanResult>("/api/scanner/scan", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+  // Flujo Operativo de ONGs[cite: 8]
+  getDonationFeed: () => request<FeedDonationItem[]>("/api/donations/feed"),
 
-  getTracking: (id: string) =>
-    request<DonationItem>(`/api/scanner/tracking/${id}`),
+  requestDonation: (donationId: string) =>
+    request<void>(`/api/donations/${donationId}/request`, { method: "POST" }),
 
-  // Geolocalización
+  // Logística, Trazabilidad y Geolocalización[cite: 8]
+  scanItem: (data: { donation_id: string; action: string; rejection_reason?: string; notes?: string }) =>
+    request<ScanResult>("/api/scanner/scan", { method: "POST", body: JSON.stringify(data) }),
+
   getMapPoints: () => request<MapPoint[]>("/api/scanner/map-points"),
+
+  // Métricas del Tablero CEO (HU-3)[cite: 13]
+  getImpactMetrics: () => request<ImpactMetrics>("/api/metrics/summary"),
 };
